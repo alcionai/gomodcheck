@@ -1,0 +1,62 @@
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - gci
+    - godot
+    - gofmt
+    - gofumpt
+    - importas
+    - lll
+    - revive
+    - thelper
+    - unconvert
+    - wsl
+
+linters-settings:
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(github.com/ashmrtn/gomodcheck)
+  lll:
+    line-length: 80
+  revive:
+    severity: error
+    rules:
+      - name: blank-imports
+      - name: bool-literal-in-expr
+      - name: constant-logical-expr
+      - name: context-as-argument
+      - name: context-keys-type
+      - name: dot-imports
+      - name: duplicated-imports
+      - name: early-return
+      - name: errorf
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: empty-block
+      - name: exported
+      - name: if-return
+      - name: identical-branches
+      - name: import-shadowing
+      - name: increment-decrement
+      - name: indent-error-flow
+      - name: modifies-value-receiver
+      - name: optimize-operands-order
+      - name: package-comments
+      - name: range
+      - name: receiver-naming
+      - name: redefines-builtin-id
+      - name: superfluous-else
+      - name: time-equal
+      - name: time-naming
+      - name: unexported-return
+      - name: unnecessary-stmt
+      - name: unused-receiver
+      - name: use-any
+      - name: useless-break
+      - name: var-declaration
+      - name: var-naming
