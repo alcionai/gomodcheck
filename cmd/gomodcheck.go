@@ -10,7 +10,7 @@ import (
 	"golang.org/x/exp/slices"
 	"golang.org/x/tools/go/packages"
 
-	"github.com/ashmrtn/gomodcheck/internal/dependency"
+	"github.com/ashmrtn/gomodcheck/pkg/dependencies"
 )
 
 type modCheckCommand struct {
@@ -32,17 +32,17 @@ type modCheckCommand struct {
 
 	// projectDeps contains all dependency sets loaded from gomodfiles in this
 	// project.
-	projectDeps []dependency.PackageDependencies
+	projectDeps []dependencies.PackageDependencies
 
 	// depDeps contains package path -> dependency sets. The package path is used
 	// instead of the gomodfile path so that we can determine which dependencies
 	// to check.
-	depDeps map[string]dependency.PackageDependencies
+	depDeps map[string]dependencies.PackageDependencies
 
 	// allLoadedDeps contains the dependency sets that has been created reading
 	// modfiles. It maps from the path of the gomodfile to the dependencies read
 	// from the gomodfile.
-	allLoadedDeps map[string]dependency.PackageDependencies
+	allLoadedDeps map[string]dependencies.PackageDependencies
 }
 
 func (c *modCheckCommand) parseAndVerifyMatchDeps() error {
@@ -113,7 +113,7 @@ func effectiveModFilePath(pkg *packages.Package) string {
 
 func (c *modCheckCommand) maybeLoadPackageDeps(
 	pkg *packages.Package,
-) (dependency.PackageDependencies, error) {
+) (dependencies.PackageDependencies, error) {
 	modFilePath := effectiveModFilePath(pkg)
 
 	// No gomodfile specified, check the next package.
@@ -130,7 +130,7 @@ func (c *modCheckCommand) maybeLoadPackageDeps(
 	fmt.Printf("loading modfile at %s\n", modFilePath)
 
 	// We actually need to go load data.
-	deps, err := dependency.NewProjectDependenciesFromPath(modFilePath)
+	deps, err := dependencies.NewProjectDependenciesFromPath(modFilePath)
 	if err != nil {
 		return nil, errors.Wrapf(
 			err,
@@ -216,7 +216,7 @@ func (c modCheckCommand) findDepErrors() []depError {
 
 		// Maps from package path -> dependencies.Dependency that needs to be
 		// compared to the dependencies.Dependency in the main project.
-		depsToCheck = map[string]dependency.Dependency{}
+		depsToCheck = map[string]dependencies.Dependency{}
 	)
 
 	for depPackage, depPath := range c.parsedMatchDeps {
@@ -304,8 +304,8 @@ func newModCheckCommand() *cobra.Command {
 	// variables as the location to place flag values.
 	runCommand := &modCheckCommand{
 		parsedMatchDeps: map[string]string{},
-		depDeps:         map[string]dependency.PackageDependencies{},
-		allLoadedDeps:   map[string]dependency.PackageDependencies{},
+		depDeps:         map[string]dependencies.PackageDependencies{},
+		allLoadedDeps:   map[string]dependencies.PackageDependencies{},
 	}
 
 	// Setup cobra command struct.
