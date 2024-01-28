@@ -25,10 +25,10 @@ type modCheckCommand struct {
 	rawMatchDeps []string
 
 	// parsedMatchDeps is populated from the info in rawMatchDeps. It goes from
-	// <package path> -> <dep path> where the package path is the path that will
-	// appear in this package's mod file and the dep path is the package path of
-	// the dependency the matching should be done on.
-	parsedMatchDeps map[string]string
+	// <package path> -> set <dep path> where the package path is the path that
+	// will appear in this package's mod file and the dep path is the package path
+	// of the dependency the matching should be done on.
+	parsedMatchDeps map[string]map[string]struct{}
 
 	// projectDeps contains all dependency sets loaded from gomodfiles in this
 	// project.
@@ -60,33 +60,33 @@ func (c *modCheckCommand) parseAndVerifyMatchDeps() error {
 				"empty package path in dep match input: %s",
 				input,
 			)
-
-		case len(c.parsedMatchDeps[parts[0]]) > 0:
-			return errors.Errorf(
-				"duplicate package pack in dep match input: %s",
-				parts[0],
-			)
 		}
 
-		c.parsedMatchDeps[parts[0]] = parts[1]
+		if c.parsedMatchDeps[parts[0]] == nil {
+			c.parsedMatchDeps[parts[0]] = map[string]struct{}{}
+		}
+
+		c.parsedMatchDeps[parts[0]][parts[1]] = struct{}{}
 	}
 
 	// Make sure that each dep we're checking the version of only appears once.
 	validateTmp := make(map[string]string, len(c.parsedMatchDeps))
 
-	for packageName, dep := range c.parsedMatchDeps {
-		// We've already been asked to check the version of this dep by sourcing the
-		// version from a different package. Return an error.
-		if otherPackageName, ok := validateTmp[dep]; ok {
-			return errors.Errorf(
-				"dep %s being sourced from multiple packages: %s and %s",
-				dep,
-				otherPackageName,
-				packageName,
-			)
-		}
+	for packageName, depSet := range c.parsedMatchDeps {
+		for dep := range depSet {
+			// We've already been asked to check the version of this dep by sourcing
+			// the version from a different package. Return an error.
+			if otherPackageName, ok := validateTmp[dep]; ok {
+				return errors.Errorf(
+					"dep %s being sourced from multiple packages: %s and %s",
+					dep,
+					otherPackageName,
+					packageName,
+				)
+			}
 
-		validateTmp[dep] = packageName
+			validateTmp[dep] = packageName
+		}
 	}
 
 	return nil
@@ -219,7 +219,7 @@ func (c modCheckCommand) findDepErrors() []depError {
 		depsToCheck = map[string]dependencies.Dependency{}
 	)
 
-	for depPackage, depPath := range c.parsedMatchDeps {
+	for depPackage, matchDepSet := range c.parsedMatchDeps {
 		depSet := c.depDeps[depPackage]
 		if depSet == nil {
 			// There either wasn't a gomodfile for this dep or the dep wasn't used by
@@ -227,11 +227,10 @@ func (c modCheckCommand) findDepErrors() []depError {
 			continue
 		}
 
-		if dep := depSet.GetDep(depPath); dep != nil {
-			fmt.Printf("adding dep %+v to check\n", dep)
-			// TODO(ashmrtn): Make sure some other package doesn't also require this
-			// dep be checked.
-			depsToCheck[depPath] = dep
+		for depPath := range matchDepSet {
+			if dep := depSet.GetDep(depPath); dep != nil {
+				depsToCheck[depPath] = dep
+			}
 		}
 	}
 
@@ -303,7 +302,7 @@ func newModCheckCommand() *cobra.Command {
 	// Create the struct that's going to do everything so we can use it's
 	// variables as the location to place flag values.
 	runCommand := &modCheckCommand{
-		parsedMatchDeps: map[string]string{},
+		parsedMatchDeps: map[string]map[string]struct{}{},
 		depDeps:         map[string]dependencies.PackageDependencies{},
 		allLoadedDeps:   map[string]dependencies.PackageDependencies{},
 	}
