@@ -94,6 +94,7 @@ func (c *modCheckCommand) parseAndVerifyMatchDeps() error {
 
 func (c *modCheckCommand) getOrLoadPackageDeps(
 	pkg *packages.Package,
+	dep dependencies.Dependency,
 ) (dependencies.PackageDependencies, bool, error) {
 	if pkg.Module == nil {
 		return nil, false, nil
@@ -117,7 +118,7 @@ func (c *modCheckCommand) getOrLoadPackageDeps(
 	}
 
 	// We actually need to go load data.
-	deps, err := dependencies.NewProjectDependenciesFromPath(modFilePath)
+	deps, err := dependencies.NewProjectDependenciesFromModfile(dep, modFilePath)
 	if err != nil {
 		return nil, false, errors.Wrapf(
 			err,
@@ -146,7 +147,7 @@ func (c *modCheckCommand) readDepMappings(
 	}
 
 	for _, pkg := range pkgs {
-		pkgDepSet, freshLoad, err := c.getOrLoadPackageDeps(pkg)
+		pkgDepSet, freshLoad, err := c.getOrLoadPackageDeps(pkg, nil)
 		if err != nil {
 			return errors.Wrap(err, "loading project deps")
 		} else if freshLoad {
@@ -175,8 +176,14 @@ func (c *modCheckCommand) readDepMappings(
 				continue
 			}
 
+			// Pull the dep info on this package that we've already parsed from the
+			// current gomodfile. This allows us to build a full lineage of file
+			// locations.
+			importDep := pkgDepSet.GetDep(importPkgPath)
+
 			if deps, freshLoad, err := c.getOrLoadPackageDeps(
 				importPkg,
+				importDep,
 			); err != nil {
 				return errors.Wrapf(
 					err,
