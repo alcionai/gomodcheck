@@ -18,12 +18,16 @@ type Dependency interface {
 	// was done at.
 	OriginalVersion() module.Version
 	EffectiveVersion() module.Version
+	Location() LocationTree
 }
 
 type dependency struct {
 	originalVersion  module.Version
 	effectiveVersion module.Version
-	globalReplace    bool
+
+	location *dependencyLocationTree
+
+	globalReplace bool
 }
 
 func (d dependency) OriginalVersion() module.Version {
@@ -32,6 +36,14 @@ func (d dependency) OriginalVersion() module.Version {
 
 func (d dependency) EffectiveVersion() module.Version {
 	return d.effectiveVersion
+}
+
+func (d dependency) Location() LocationTree {
+	if d.location == nil {
+		return nil
+	}
+
+	return d.location
 }
 
 func (d *dependency) maybeUpdate(rep *modfile.Replace) (bool, error) {
@@ -44,29 +56,31 @@ func (d *dependency) maybeUpdate(rep *modfile.Replace) (bool, error) {
 	//     replace directive.
 	if len(rep.Old.Version) > 0 {
 		// Replace statment for a different module version, nothing to do.
-		if d.originalVersion.Version != rep.Old.Version {
+		if d.OriginalVersion().Version != rep.Old.Version {
 			return false, nil
 		}
 
-		if d.originalVersion != d.effectiveVersion && !d.globalReplace {
+		if d.OriginalVersion() != d.EffectiveVersion() && !d.globalReplace {
 			return false, errors.Errorf(
 				"multiple version-specific replace directives for module %s",
-				d.originalVersion.Path,
+				d.OriginalVersion().Path,
 			)
 		}
 
 		d.effectiveVersion = rep.New
+		d.location.replace.Row = rep.Syntax.Start.Line
+		d.location.replace.Col = rep.Syntax.Start.LineRune
 		d.globalReplace = false
 
 		return true, nil
 	}
 
 	// Remainder of function deals with untargetted replace directives.
-	if d.effectiveVersion != d.originalVersion {
+	if d.EffectiveVersion().Version != d.OriginalVersion().Version {
 		if d.globalReplace {
 			return false, errors.Errorf(
 				"multiple non-version-specific replace directives for module %s",
-				d.originalVersion.Path,
+				d.OriginalVersion().Path,
 			)
 		}
 
@@ -76,6 +90,8 @@ func (d *dependency) maybeUpdate(rep *modfile.Replace) (bool, error) {
 	}
 
 	d.effectiveVersion = rep.New
+	d.location.replace.Row = rep.Syntax.Start.Line
+	d.location.replace.Col = rep.Syntax.Start.LineRune
 	d.globalReplace = true
 
 	return true, nil
@@ -95,7 +111,8 @@ func readModFile(path string) (*modfile.File, error) {
 	return f, nil
 }
 
-func NewProjectDependenciesFromPath(
+func NewProjectDependenciesFromModfile(
+	parentModDecl Dependency,
 	modFilePath string,
 ) (PackageDependencies, error) {
 	modFile, err := readModFile(modFilePath)
@@ -104,7 +121,6 @@ func NewProjectDependenciesFromPath(
 	}
 
 	res := &projectDependencies{
-		modFilePath:        modFilePath,
 		allDependencies:    map[string]*dependency{},
 		directDependencies: map[string]*dependency{},
 		replacements:       map[string]*dependency{},
@@ -115,9 +131,22 @@ func NewProjectDependenciesFromPath(
 			return nil, errors.Errorf("duplicate dependency %s", req.Mod.Path)
 		}
 
+		loc := &dependencyLocationTree{
+			parentModVersion: modFile.Module.Mod.String(),
+			original: FileLocation{
+				Row: req.Syntax.Start.Line,
+				Col: req.Syntax.Start.LineRune,
+			},
+		}
+
+		if parentModDecl != nil {
+			loc.ancestor = parentModDecl.Location()
+		}
+
 		dep := &dependency{
 			originalVersion:  req.Mod,
 			effectiveVersion: req.Mod,
+			location:         loc,
 		}
 
 		res.allDependencies[req.Mod.Path] = dep
@@ -137,10 +166,6 @@ func NewProjectDependenciesFromPath(
 }
 
 type projectDependencies struct {
-	// modFilePath is the file system path the of the gomodfile dependency info is
-	// sourced from.
-	modFilePath string
-
 	// replacements contains package path -> dep info for all dependency that have
 	// been updated by replace directives.
 	replacements map[string]*dependency
