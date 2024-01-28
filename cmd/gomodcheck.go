@@ -157,18 +157,12 @@ func (c *modCheckCommand) readDepMappings(
 
 		// Go through the imports in this package. If any of them are in the list of
 		// packages that we're going to compare against load them as well.
-		for importPath, importPkg := range pkg.Imports {
+		for _, importPkg := range pkg.Imports {
 			var importPkgPath string
 
 			if importPkg.Module != nil {
 				importPkgPath = importPkg.Module.Path
 			}
-
-			fmt.Printf(
-				"seeing if package %s from import %s should be loaded\n",
-				importPkgPath,
-				importPath,
-			)
 
 			// If the package backing this import isn't one of the ones we're going to
 			// check against then don't bother loading it.
@@ -239,12 +233,12 @@ func (c modCheckCommand) findDepErrors() []depError {
 		}
 
 		for _, dep := range depSet.Replacements() {
-			fmt.Printf("adding dep %+v to check\n", dep)
+			// TODO(ashmrtn): Make sure some other package doesn't also require this
+			// dep be checked. We need to check this because we don't know upfront
+			// what replace directives deps will have.
 			depsToCheck[dep.OriginalVersion().Path] = dep
 		}
 	}
-
-	fmt.Printf("found %v deps to check\n", len(depsToCheck))
 
 	for _, checkDep := range depsToCheck {
 		for _, projectDepSet := range c.projectDeps {
@@ -252,8 +246,6 @@ func (c modCheckCommand) findDepErrors() []depError {
 			if projectDep == nil {
 				continue
 			}
-
-			fmt.Printf("checking project dep %+v\n", projectDep)
 
 			wantVersion := checkDep.EffectiveVersion().String()
 			gotVersion := projectDep.EffectiveVersion().String()
