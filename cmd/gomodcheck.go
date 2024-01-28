@@ -92,47 +92,34 @@ func (c *modCheckCommand) parseAndVerifyMatchDeps() error {
 	return nil
 }
 
-// effectiveModFilePath returns the path to the gomodfile that is in use. This
-// will either be the path to the original gomodfile or the path to the
-// gomodfile for the version of the package specified in a replace directive if
-// one exists. An empty string is returned if no gomodfiles are specified in
-// this package.
-func effectiveModFilePath(pkg *packages.Package) string {
-	if pkg.Module == nil {
-		return ""
-	}
-
-	res := pkg.Module.GoMod
-
-	if pkg.Module.Replace != nil && len(pkg.Module.Replace.GoMod) > 0 {
-		res = pkg.Module.Replace.GoMod
-	}
-
-	return res
-}
-
-func (c *modCheckCommand) maybeLoadPackageDeps(
+func (c *modCheckCommand) getOrLoadPackageDeps(
 	pkg *packages.Package,
-) (dependencies.PackageDependencies, error) {
-	modFilePath := effectiveModFilePath(pkg)
+) (dependencies.PackageDependencies, bool, error) {
+	if pkg.Module == nil {
+		return nil, false, nil
+	}
+
+	modFilePath := pkg.Module.GoMod
+
+	if pkg.Module.Replace != nil {
+		modFilePath = pkg.Module.Replace.GoMod
+	}
 
 	// No gomodfile specified, check the next package.
 	if len(modFilePath) == 0 {
-		return nil, nil
+		return nil, false, nil
 	}
 
 	// We've already loaded info for this particular gomodfile. No need to load
 	// it again so continue on.
-	if c.allLoadedDeps[modFilePath] != nil {
-		return nil, nil
+	if deps := c.allLoadedDeps[modFilePath]; deps != nil {
+		return deps, false, nil
 	}
-
-	fmt.Printf("loading modfile at %s\n", modFilePath)
 
 	// We actually need to go load data.
 	deps, err := dependencies.NewProjectDependenciesFromPath(modFilePath)
 	if err != nil {
-		return nil, errors.Wrapf(
+		return nil, false, errors.Wrapf(
 			err,
 			"loading dependency info for: %s",
 			modFilePath,
@@ -141,7 +128,7 @@ func (c *modCheckCommand) maybeLoadPackageDeps(
 
 	c.allLoadedDeps[modFilePath] = deps
 
-	return deps, nil
+	return deps, true, nil
 }
 
 func (c *modCheckCommand) readDepMappings(
@@ -151,7 +138,6 @@ func (c *modCheckCommand) readDepMappings(
 	cfg := &packages.Config{
 		Context: ctx,
 		Mode:    packages.NeedName | packages.NeedImports | packages.NeedModule,
-		Tests:   true,
 	}
 
 	pkgs, err := packages.Load(cfg, packagePath)
@@ -160,10 +146,11 @@ func (c *modCheckCommand) readDepMappings(
 	}
 
 	for _, pkg := range pkgs {
-		if deps, err := c.maybeLoadPackageDeps(pkg); err != nil {
+		pkgDepSet, freshLoad, err := c.getOrLoadPackageDeps(pkg)
+		if err != nil {
 			return errors.Wrap(err, "loading project deps")
-		} else if deps != nil {
-			c.projectDeps = append(c.projectDeps, deps)
+		} else if freshLoad {
+			c.projectDeps = append(c.projectDeps, pkgDepSet)
 		}
 
 		// Go through the imports in this package. If any of them are in the list of
@@ -188,13 +175,15 @@ func (c *modCheckCommand) readDepMappings(
 				continue
 			}
 
-			if deps, err := c.maybeLoadPackageDeps(importPkg); err != nil {
+			if deps, freshLoad, err := c.getOrLoadPackageDeps(
+				importPkg,
+			); err != nil {
 				return errors.Wrapf(
 					err,
 					"loading deps for dependency %s",
 					importPkgPath,
 				)
-			} else if deps != nil {
+			} else if freshLoad {
 				c.depDeps[importPkgPath] = deps
 			}
 		}
