@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -200,10 +201,11 @@ func (c *modCheckCommand) readDepMappings(
 }
 
 type depError struct {
-	// TODO(ashmrtn): Switch this to allow for pointing to the original path of
-	// the package and the replaced version of the package if it's replaced.
 	wantVersion string
 	gotVersion  string
+
+	gotLoc  dependencies.LocationTree
+	wantLoc dependencies.LocationTree
 }
 
 func (c modCheckCommand) findDepErrors() []depError {
@@ -262,6 +264,8 @@ func (c modCheckCommand) findDepErrors() []depError {
 					depError{
 						wantVersion: wantVersion,
 						gotVersion:  gotVersion,
+						gotLoc:      projectDep.Location(),
+						wantLoc:     checkDep.Location(),
 					},
 				)
 			}
@@ -269,6 +273,50 @@ func (c modCheckCommand) findDepErrors() []depError {
 	}
 
 	return res
+}
+
+func ancestryToString(loc dependencies.LocationTree) string {
+	var res string
+
+	for loc != nil {
+		res += fmt.Sprintf(
+			"\t\toriginally included in modfile for module %s line %d, col %d",
+			loc.ParentPackage(),
+			loc.OriginalLocation().Row,
+			loc.OriginalLocation().Col,
+		)
+
+		if loc.EffectiveLocation() != loc.OriginalLocation() {
+			res += fmt.Sprintf(
+				"\n\t\t\treplaced at line %d, col %d",
+				loc.EffectiveLocation().Row,
+				loc.EffectiveLocation().Col,
+			)
+		}
+
+		res += "\n"
+
+		loc = loc.Ancestor()
+	}
+
+	return res
+}
+
+func printFormattedErr(depErr depError) {
+	msg := fmt.Sprintf(
+		"Module mismatch: in modfile for module %s line %d, col %d: "+
+			"have version %s but want version %s\n",
+		depErr.gotLoc.ParentPackage(),
+		depErr.gotLoc.EffectiveLocation().Row,
+		depErr.gotLoc.EffectiveLocation().Col,
+		depErr.gotVersion,
+		depErr.wantVersion,
+	)
+
+	msg += "\tgot version:\n" + ancestryToString(depErr.gotLoc)
+	msg += "\twant version:\n" + ancestryToString(depErr.wantLoc)
+
+	fmt.Fprint(os.Stderr, msg)
 }
 
 func (c *modCheckCommand) run(ctx context.Context, packagePath string) error {
@@ -279,7 +327,7 @@ func (c *modCheckCommand) run(ctx context.Context, packagePath string) error {
 	depErrs := c.findDepErrors()
 
 	for _, depErr := range depErrs {
-		fmt.Printf("%+v\n", depErr)
+		printFormattedErr(depErr)
 	}
 
 	if len(depErrs) > 0 {
