@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ashmrtn/gomodcheck/cmd"
+	"github.com/alcionai/gomodcheck/cmd"
 )
 
 func main() {

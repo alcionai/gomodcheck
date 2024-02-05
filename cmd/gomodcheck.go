@@ -11,7 +11,7 @@ import (
 	"golang.org/x/exp/slices"
 	"golang.org/x/tools/go/packages"
 
-	"github.com/ashmrtn/gomodcheck/pkg/dependencies"
+	"github.com/alcionai/gomodcheck/pkg/dependencies"
 )
 
 type modCheckCommand struct {
