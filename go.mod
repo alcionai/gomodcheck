@@ -1,4 +1,4 @@
-module github.com/ashmrtn/gomodcheck
+module github.com/alcionai/gomodcheck
 
 go 1.21
 

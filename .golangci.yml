@@ -19,7 +19,7 @@ linters-settings:
     sections:
       - standard
       - default
-      - prefix(github.com/ashmrtn/gomodcheck)
+      - prefix(github.com/alcionai/gomodcheck)
   lll:
     line-length: 80
   revive:
